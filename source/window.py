@@ -5,7 +5,11 @@ import time
 import numpy as np
 # custom src code
 from button import Button
-from scene import Scene, Bullet, map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d
+from scene import ( 
+    Scene, Bullet, Enemy,
+    map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d
+)
+
 import copy
 
 ###############
@@ -15,11 +19,9 @@ WINDOW_CAPTION = "Happy Days"
 ###############
 
 
-
 # ======= HELPER FUNCTIONS =============
 def get_font(size):
     return pygame.font.Font("assets/font.ttf", size)
-
 
 
 # ======= RENDER FUNCTIONS =============
@@ -36,7 +38,15 @@ def render_bullet(screen_ptr: pygame.Surface, bullet: Bullet) -> None:
     gl_pos = bullet.gl_pos.copy()
     viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
     pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
-    pygame.draw.circle(screen_ptr, "red", pg_pos, bullet.pg_radius)
+    pygame.draw.circle(screen_ptr, "white", pg_pos, bullet.pg_radius)
+
+
+def render_enemy(screen_ptr: pygame.Surface, enemy: Enemy) -> None:
+    gl_pos = enemy.gl_pos.copy()
+    viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
+    pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
+    pygame.draw.circle(screen_ptr, "red", pg_pos, enemy.radius)
+
 
 # ======= GAME WINDOW ======================
 class Window:
@@ -177,7 +187,7 @@ class Window:
         pygame.mouse.set_cursor((8,8),(0,0),(0,0,0,0,0,0,0,0),(0,0,0,0,0,0,0,0)) # invisible cursor
 
         viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
-        fps = 120
+        fps = 60
         game_over = False
         while not game_over:       
             self.clock.tick(fps)  
@@ -186,6 +196,9 @@ class Window:
             m_xpos, m_ypos = pygame.mouse.get_pos()
             self.handle_keyboard_events_play()
             self.game_scene.player.update_state(1/fps, m_xpos, m_ypos)
+
+            self.game_scene.add_enemies()
+            self.game_scene.update_enemies(1/fps, self.game_scene.player.current_position)
 
             if pygame.mouse.get_pressed()[0]: # Left click
                 self.game_scene.player.shoot()
@@ -201,13 +214,19 @@ class Window:
             gl_weapon_dir_endpoint = self.game_scene.player.current_weapon_direction * 0.5 + \
                 self.game_scene.player.current_position
 
-            # Draw a circle
+            # render player
             pygame.draw.circle(self.screen, "white", pg_player_pos, 11)
-            pygame.draw.line(self.screen, "red", pg_player_pos, pg_player_dir_vector_endpoint)
+            # pygame.draw.line(self.screen, "red", pg_player_pos, pg_player_dir_vector_endpoint)
+            
             render_cursor(self.screen, np.array([m_xpos, m_ypos]), size=16)
 
+            # render bullets
             for bullet in self.game_scene.player.bullets_alive:
                 render_bullet(self.screen, bullet)
+            
+            # render enemies
+            for enemy in self.game_scene.enemies_alive:
+                render_enemy(self.screen, enemy)
 
             if debug_mode:
                 pg_direction_text = get_font(size=8).render(f'pg_weapon_direction: {pg_player_dir_vector_endpoint}', True, "white")
@@ -226,8 +245,7 @@ class Window:
     def pause_menu(self):
         ...
 
-    def window_game_main_loop(self):
-        
+    def window_game_main_loop(self):   
         self.main_menu()
 
 

@@ -153,9 +153,11 @@ class Enemy:
     def __init__(self, gl_pos: np.array) -> None:
         self.gl_pos = gl_pos
         self.current_velocity = np.array([0, 0])
+        self.radius = 5
+
         self.base_hitpoints = 5
         self.base_armor = 0.0
-        self.base_speed = 1
+        self.base_speed = 0.5
 
     def update_velocity(self, player_gl_pos: np.array):
         new_velocity_vector = player_gl_pos - self.gl_pos
@@ -209,4 +211,9 @@ class Scene():
     
     def remove_enemies(self):
         ...
+
+    def update_enemies(self, dt: float, player_gl_pos: np.array):
+        for enemy in self.enemies_alive:
+            enemy.update_state(dt, player_gl_pos)
+
 
