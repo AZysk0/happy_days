@@ -3,14 +3,15 @@ import pygame.locals as locals
 import sys
 import time
 import numpy as np
+import copy
+import numba
+
 # custom src code
 from button import Button
 from scene import ( 
-    Scene, Bullet, Enemy,
+    Scene, Bullet, Enemy, Camera, Player,
     map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d
 )
-
-import copy
 
 ###############
 WINDOW_WIDTH = 800
@@ -30,8 +31,11 @@ def render_cursor(screen_ptr: pygame.Surface, pg_cursor_pos: np.array, size: int
     screen_ptr.blit(cursor_texture, pg_cursor_pos)
 
 
-def render_player(screen_ptr: pygame.Surface, player_pos) -> None:
-    ...
+def render_player(screen_ptr: pygame.Surface, player: Player) -> None:
+    gl_pos = player.current_position.copy()
+    viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
+    pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
+    pygame.draw.circle(screen_ptr, "white", pg_pos, player.base_radius)
 
 
 def render_bullet(screen_ptr: pygame.Surface, bullet: Bullet) -> None:
@@ -46,6 +50,44 @@ def render_enemy(screen_ptr: pygame.Surface, enemy: Enemy) -> None:
     viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
     pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
     pygame.draw.circle(screen_ptr, "red", pg_pos, enemy.radius)
+
+
+def render_scene_camera_offset(screen_ptr: pygame.Surface, scene: Scene) -> None:
+    
+    # todo later (do not render shit too far away from player)
+
+    # make copies of objects of the scene (to ensure original objects did not modified)
+    player_copy = copy.deepcopy(scene.player)
+    bullets_alive_copy = copy.deepcopy(player_copy.bullets_alive)
+    enemies_alive_copy = copy.deepcopy(scene.enemies_alive)
+    camera_copy = copy.deepcopy(scene.camera)
+    
+    # apply camera to all objects of the scene (player, bullets, enemies)
+    player_copy.current_position = camera_copy.apply(player_copy.current_position)
+    render_player(screen_ptr, player_copy)
+
+    for bullet in bullets_alive_copy:
+        bullet.gl_pos = camera_copy.apply(bullet.gl_pos)
+        render_bullet(screen_ptr, bullet)
+
+    for enemy in enemies_alive_copy:
+        enemy.gl_pos = camera_copy.apply(enemy.gl_pos)
+        render_enemy(screen_ptr, enemy)
+
+
+def render_scene_no_camera_offset(screen_ptr: pygame.Surface, scene: Scene) -> None:
+    
+    # todo later (do not render shit too far away from player)
+
+    # make copies of objects of the scene (to ensure original objects did not modified)
+    player_copy = copy.deepcopy(scene.player)
+    bullets_alive_copy = copy.deepcopy(player_copy.bullets_alive)
+    enemies_alive_copy = copy.deepcopy(scene.enemies_alive)
+    
+    # apply camera to all objects of the scene (player, bullets, enemies)
+    render_player(screen_ptr, player_copy)
+    for bullet in bullets_alive_copy: render_bullet(screen_ptr, bullet)
+    for enemy in enemies_alive_copy: render_enemy(screen_ptr, enemy)
 
 
 # ======= GAME WINDOW ======================
@@ -187,56 +229,75 @@ class Window:
         pygame.mouse.set_cursor((8,8),(0,0),(0,0,0,0,0,0,0,0),(0,0,0,0,0,0,0,0)) # invisible cursor
 
         viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
-        fps = 60
+        fps = 120
         game_over = False
+        t1 = time.time()
+        time.sleep(1 / fps)
         while not game_over:       
             self.clock.tick(fps)  
             self.screen.fill("black")
             # update states
+            t2 = time.time()
+            dt = t2 - t1
+            t1 = time.time()
             m_xpos, m_ypos = pygame.mouse.get_pos()
             self.handle_keyboard_events_play()
-            self.game_scene.player.update_state(1/fps, m_xpos, m_ypos)
+            # player
+            self.game_scene.player.update_state(dt, m_xpos, m_ypos)
 
+            # enemies
             self.game_scene.add_enemies()
-            self.game_scene.update_enemies(1/fps, self.game_scene.player.current_position)
+            self.game_scene.process_collisions()
+            self.game_scene.remove_dead_enemies()
+            self.game_scene.update_enemies(dt, self.game_scene.player.current_position)
+
+            # camera
+            # self.game_scene.camera.update_velocity_vector(self.game_scene.player.current_position)
+            # self.game_scene.camera.update_position(dt)
+
 
             if pygame.mouse.get_pressed()[0]: # Left click
                 self.game_scene.player.shoot()
 
-            pg_player_pos = map_opengl_to_pg_coordinates_2d(
-                self.game_scene.player.current_position,
-                viewport
-            )
-            pg_player_dir_vector_endpoint = map_opengl_to_pg_coordinates_2d(
-                self.game_scene.player.current_position + self.game_scene.player.current_weapon_direction,
-                viewport
-            )
-            gl_weapon_dir_endpoint = self.game_scene.player.current_weapon_direction * 0.5 + \
-                self.game_scene.player.current_position
+            # pg_player_pos = map_opengl_to_pg_coordinates_2d(
+            #     self.game_scene.player.current_position,
+            #     viewport
+            # )
+            # pg_player_dir_vector_endpoint = map_opengl_to_pg_coordinates_2d(
+            #     self.game_scene.player.current_position + self.game_scene.player.current_weapon_direction,
+            #     viewport
+            # )
+            # gl_weapon_dir_endpoint = self.game_scene.player.current_weapon_direction * 0.5 + \
+            #     self.game_scene.player.current_position
+
+            # ========= rendering part
+            # move all object coordinates with respect to camera
+
 
             # render player
-            pygame.draw.circle(self.screen, "white", pg_player_pos, 11)
+            # pygame.draw.circle(self.screen, "white", pg_player_pos, 11)
             # pygame.draw.line(self.screen, "red", pg_player_pos, pg_player_dir_vector_endpoint)
             
             render_cursor(self.screen, np.array([m_xpos, m_ypos]), size=16)
 
-            # render bullets
-            for bullet in self.game_scene.player.bullets_alive:
-                render_bullet(self.screen, bullet)
-            
-            # render enemies
-            for enemy in self.game_scene.enemies_alive:
-                render_enemy(self.screen, enemy)
+            render_scene_no_camera_offset(self.screen, self.game_scene)
 
             if debug_mode:
-                pg_direction_text = get_font(size=8).render(f'pg_weapon_direction: {pg_player_dir_vector_endpoint}', True, "white")
-                gl_direction_text = get_font(size=8).render(f'gl_weapon_dir_endpoint: {gl_weapon_dir_endpoint}', True, "white")
-                velocity_text = get_font(size=8).render(f'player_velocity: {self.game_scene.player.current_velocity}', True, "white")
-                player_pos_text = get_font(size=8).render(f'player_pos:{pg_player_pos}', True, "white")
-                self.screen.blit(pg_direction_text, (10, 10))
-                self.screen.blit(gl_direction_text, (10, 20))
-                self.screen.blit(velocity_text, (10, 30))
-                self.screen.blit(player_pos_text, (10, 40))
+                # pg_direction_text = get_font(size=8).render(f'pg_weapon_direction: {pg_player_dir_vector_endpoint}', True, "white")
+                # gl_direction_text = get_font(size=8).render(f'gl_weapon_dir_endpoint: {gl_weapon_dir_endpoint}', True, "white")
+                # velocity_text = get_font(size=8).render(f'player_velocity: {self.game_scene.player.current_velocity}', True, "white")
+                # player_pos_text = get_font(size=8).render(f'player_pos:{pg_player_pos}', True, "white")
+                fps_text = get_font(size=8).render(f'FPS: {int(1 / dt)}', True, 'white')
+                # debug_labels = (
+                #     pg_direction_text, gl_direction_text, velocity_text, 
+                #     player_pos_text, fps_text
+                # )
+                # for i, label in enumerate(debug_labels):
+                #     if label is None:
+                #         i -= 1
+                #         continue
+                #     self.screen.blit(label, (10, 10 * (i + 1)))
+                self.screen.blit(fps_text, (10, 10))
 
             # render scene
 
