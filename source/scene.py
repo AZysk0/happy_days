@@ -348,19 +348,3 @@ class Scene():
                 self.player.bullets_alive.pop(i)
                 break
 
-
-# ============
-class Animation: 
-
-    def __init__(self) -> None:
-        pass
-
-    def blood(self):
-        ...
-
-    def explosion(self):
-        ...
-    
-    def background(self):
-        ...
-    

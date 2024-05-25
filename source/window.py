@@ -1,10 +1,12 @@
+import sys
+import os
 import pygame
 import pygame.locals as locals
-import sys
 import time
 import numpy as np
 import copy
 import numba
+import random
 
 # custom src code
 from button import Button
@@ -96,6 +98,7 @@ class Window:
     def __init__(self) -> None:
         pygame.init()
         pygame.mixer.init()
+        pygame.mixer.Channel(0).set_volume(0.1)
 
         self.clock = pygame.time.Clock()
         
@@ -124,6 +127,12 @@ class Window:
 
         self.game_scene = Scene()
         self.current_game_state = 'main'
+        self.current_track = ''
+        self.prev_track = ''
+        self.mixer_is_idle = True
+        self.play_menu_track_queue = []
+        self.track_list_folder = 'assets/music/'
+        self.track_list = os.listdir(self.track_list_folder)
     
     def handle_keyboard_events_main_menu(self):
         menu_mouse_pos = pygame.mouse.get_pos()
@@ -184,6 +193,7 @@ class Window:
                     if self.main_menu_buttons[0].checkForInput(mouse_pos):
                         # self.current_game_state = 'play'
                         # menu_is_active = not menu_is_active
+                        pygame.mixer.music.stop()
                         self.play()
                     if self.main_menu_buttons[1].checkForInput(mouse_pos):
                         # self.current_game_state = 'options'
@@ -205,7 +215,7 @@ class Window:
     def options(self):
         return
 
-    def handle_keyboard_events_play(self):
+    def handle_events_play(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -223,17 +233,33 @@ class Window:
                 self.game_scene.player.update_velocity_vector(keys_pressed)
                 # self.game_scene.player.normalize_velocity_vector()
 
+    def play_music(self):
+        if not pygame.mixer.Channel(0).get_busy():
+            
+            if self.prev_track == '':
+                next_track_name = random.choice(self.track_list)
+            else:
+                tracklist_copy = self.track_list.copy()
+                tracklist_copy.remove(self.prev_track)
+                next_track_name = random.choice(self.track_list.copy())
+            
+            next_track = pygame.mixer.Sound(
+                self.track_list_folder + next_track_name
+            )
+            self.prev_track = next_track_name
+            pygame.mixer.Channel(0).play(next_track, fade_ms=3000)
+
     def play(self):
         debug_mode = True
-        pygame.mixer.music.stop()
         pygame.mouse.set_cursor((8,8),(0,0),(0,0,0,0,0,0,0,0),(0,0,0,0,0,0,0,0)) # invisible cursor
-
+        
         viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
         fps = 120
         game_over = False
         t1 = time.time()
         time.sleep(1 / fps)
-        while not game_over:       
+        while not game_over:
+            self.play_music()
             self.clock.tick(fps)  
             self.screen.fill("black")
             # update states
@@ -241,7 +267,7 @@ class Window:
             dt = t2 - t1
             t1 = time.time()
             m_xpos, m_ypos = pygame.mouse.get_pos()
-            self.handle_keyboard_events_play()
+            self.handle_events_play()
             # player
             self.game_scene.player.update_state(dt, m_xpos, m_ypos)
 
@@ -280,6 +306,7 @@ class Window:
             
             render_cursor(self.screen, np.array([m_xpos, m_ypos]), size=16)
 
+            # render_scene_no_camera_offset(self.screen, self.game_scene)
             render_scene_no_camera_offset(self.screen, self.game_scene)
 
             if debug_mode:
