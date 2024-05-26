@@ -14,6 +14,8 @@ from scene import (
     Scene, Bullet, Enemy, Camera, Player,
     map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d
 )
+from hud import HeadupDisplay
+
 
 ###############
 WINDOW_WIDTH = 800
@@ -98,7 +100,7 @@ class Window:
     def __init__(self) -> None:
         pygame.init()
         pygame.mixer.init()
-        pygame.mixer.Channel(0).set_volume(0.1)
+        pygame.mixer.Channel(0).set_volume(0.02)
 
         self.clock = pygame.time.Clock()
         
@@ -133,6 +135,8 @@ class Window:
         self.play_menu_track_queue = []
         self.track_list_folder = 'assets/music/'
         self.track_list = os.listdir(self.track_list_folder)
+        # self.current_game_score = 0
+        self.game_is_paused = False
     
     def handle_keyboard_events_main_menu(self):
         menu_mouse_pos = pygame.mouse.get_pos()
@@ -252,12 +256,13 @@ class Window:
     def play(self):
         debug_mode = True
         pygame.mouse.set_cursor((8,8),(0,0),(0,0,0,0,0,0,0,0),(0,0,0,0,0,0,0,0)) # invisible cursor
-        
+        current_session_hud = HeadupDisplay(player_max_hp=self.game_scene.player.hitpoints)
         viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
         fps = 120
         game_over = False
         t1 = time.time()
         time.sleep(1 / fps)
+        current_game_score = 0
         while not game_over:
             self.play_music()
             self.clock.tick(fps)  
@@ -274,8 +279,12 @@ class Window:
             # enemies
             self.game_scene.add_enemies()
             self.game_scene.process_collisions()
-            self.game_scene.remove_dead_enemies()
+            this_frame_enemies_dead = self.game_scene.remove_dead_enemies()
+            current_game_score += this_frame_enemies_dead
             self.game_scene.update_enemies(dt, self.game_scene.player.current_position)
+
+            # hud
+            current_session_hud.update_hud(self.game_scene.player.hitpoints)
 
             # camera
             # self.game_scene.camera.update_velocity_vector(self.game_scene.player.current_position)
@@ -285,29 +294,20 @@ class Window:
             if pygame.mouse.get_pressed()[0]: # Left click
                 self.game_scene.player.shoot()
 
-            # pg_player_pos = map_opengl_to_pg_coordinates_2d(
-            #     self.game_scene.player.current_position,
-            #     viewport
-            # )
-            # pg_player_dir_vector_endpoint = map_opengl_to_pg_coordinates_2d(
-            #     self.game_scene.player.current_position + self.game_scene.player.current_weapon_direction,
-            #     viewport
-            # )
-            # gl_weapon_dir_endpoint = self.game_scene.player.current_weapon_direction * 0.5 + \
-            #     self.game_scene.player.current_position
-
             # ========= rendering part
-            # move all object coordinates with respect to camera
-
-
-            # render player
-            # pygame.draw.circle(self.screen, "white", pg_player_pos, 11)
-            # pygame.draw.line(self.screen, "red", pg_player_pos, pg_player_dir_vector_endpoint)
-            
             render_cursor(self.screen, np.array([m_xpos, m_ypos]), size=16)
 
             # render_scene_no_camera_offset(self.screen, self.game_scene)
             render_scene_no_camera_offset(self.screen, self.game_scene)
+
+            # hud is last to render (nearest to the user)
+            current_session_hud.draw_hud_elements(self.screen)
+            game_score_text = get_font(size=32).render(f'Score: {current_game_score}', True, 'white')
+            player_accuracy = 0 if self.game_scene.player.bullets_shot == 0 else self.game_scene.player.bullets_hit / self.game_scene.player.bullets_shot
+            player_accuracy_text = get_font(size=8).render(f'Accuracy% : {player_accuracy * 100}', True, 'white')
+
+            self.screen.blit(game_score_text, (WINDOW_WIDTH // 2 - 100, 10))
+            self.screen.blit(player_accuracy_text, (10, 20))
 
             if debug_mode:
                 # pg_direction_text = get_font(size=8).render(f'pg_weapon_direction: {pg_player_dir_vector_endpoint}', True, "white")
@@ -330,7 +330,19 @@ class Window:
 
             pygame.display.update()
     
+    def gameover_menu(self):
+        # quit (to main menu button)
+        # retry button
+        ...
+
     def pause_menu(self):
+
+        # render scene but no dt = 0 each frame
+
+        # darken all game scene
+
+        # draw pause buttons (resume, options, quit)
+
         ...
 
     def window_game_main_loop(self):   

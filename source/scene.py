@@ -7,7 +7,7 @@ import numba
 import functools
 
 from typing import Tuple, List, Union
-
+from config import *
 # ======= CONSTANTS ===========
 PLAYER_MAX_VELOCITY = 1
 EPSILON = 0.000001
@@ -111,6 +111,11 @@ class Enemy:
         self.hitpoints = 5
         self.base_armor = 0.0
         self.base_speed = 0.5
+        self.base_damage = 1.0
+        self.damage_multiplier = 1.0
+    
+    def get_damage(self):
+        return self.base_damage * self.damage_multiplier
 
     def update_velocity(self, player_gl_pos: np.array):
         new_velocity_vector = player_gl_pos - self.gl_pos
@@ -182,6 +187,8 @@ class Player:
         self.is_knockbacked = False
 
         self.bullets_alive: list[Bullet] = []
+        self.bullets_shot = 0
+        self.bullets_hit = 0
 
     def shoot(self):
         # create bullets
@@ -194,6 +201,7 @@ class Player:
         )
         self.bullets_alive += [new_bullet]
         self.cooldown_shoot = self.base_shoot_frequency
+        self.bullets_shot += 1
 
     def check_enemy_collision(self, enemy_obj) -> bool:
         if self.is_invincible:
@@ -208,6 +216,12 @@ class Player:
 
     def update_position(self, dt):
         speed = 1
+        
+        if self.is_knockbacked:
+            speed = 2
+            self.current_position = self.current_position + self.knockback_vector * dt * speed
+            return
+        # else
         self.current_position = self.current_position + self.current_velocity * dt * speed
 
     def update_current_weapon_direction(self, m_xpos, m_ypos):
@@ -217,6 +231,9 @@ class Player:
         self.current_weapon_direction = new_direction / linalg.norm(new_direction)
     
     def update_velocity_vector(self, keys_pressed):
+        # ignore key presses when knockbacked
+        if self.is_knockbacked:
+            return
         keys_movement = (pygame.K_d, pygame.K_a, pygame.K_s, pygame.K_w)
         vs = (np.array([1, 0]), np.array([-1, 0]), np.array([0, -1]), np.array([0, 1]))
         keys_bitmask = tuple(map(lambda key: keys_pressed[key], keys_movement))
@@ -252,7 +269,7 @@ class Player:
         
         # knockback
         if self.is_knockbacked:
-            self.invincibility_time_left -= dt
+            self.knockback_time_left -= dt
         if self.knockback_time_left < 0:
             self.is_knockbacked = False
             self.knockback_time_left = 0.0
@@ -312,9 +329,11 @@ class Scene():
         while len(self.enemies_alive) < self.max_enemies:
             self.add_random_enemy()
     
-    def remove_dead_enemies(self):
+    def remove_dead_enemies(self) -> int:
         # keep enemies that are alive
+        enemies_alive_length = self.enemies_alive.__len__()  # before enemies removal
         self.enemies_alive = list(filter(lambda ememy: ememy.hitpoints > 0, self.enemies_alive))
+        return enemies_alive_length - self.enemies_alive.__len__()  # cound enemies dead
 
     def update_enemies(self, dt: float, player_gl_pos: np.array):
         # parallelizable
@@ -325,12 +344,19 @@ class Scene():
         # player with enemies
         for enemy in self.enemies_alive:
             if self.player.check_enemy_collision(enemy):
+                
+                if not self.player.is_invincible:
+                    self.player.hitpoints -= enemy.get_damage()
+
                 # process event "player got hit from enemy" collision here
-                ...
+                self.player.is_invincible = True
+                self.player.invincibility_time_left = 0.5
+
+                self.player.is_knockbacked = True
+                self.player.knockback_time_left = 0.2
+                self.player.knockback_vector = -(enemy.gl_pos - self.player.current_position) / fast_dist(enemy.gl_pos, self.player.current_position)
 
         # bullets with enemies (for each bullet for each enemy)
-
-        # remove bullet right after collision with enemy
         for i, bullet in enumerate(self.player.bullets_alive.copy()):
             # for each bullet sort enemies by dist
             fast_dist_to_current_bullet_func = functools.partial(fast_dist, bullet.gl_pos)
@@ -338,10 +364,9 @@ class Scene():
                 lambda enemy: fast_dist_to_current_bullet_func(enemy.gl_pos), self.enemies_alive
             )))
             nearest_enemy_index = bullet_enemy_dist_array.argmin()
-            # print(nearest_enemy_index)
-            # nearest_enemy = self.enemies_alive[nearest_enemy_index]
             bullet_hit_enemy = bullet.check_collision(self.enemies_alive[nearest_enemy_index])
             if bullet_hit_enemy:
+                self.player.bullets_hit += 1
                 # process event "bullet hit enemy"
                 self.enemies_alive[nearest_enemy_index].hitpoints -= self.player.get_current_damage()
                 # print(bullet_hit_enemy, bullet_enemy_dist_array[nearest_enemy_index], sep=', ')

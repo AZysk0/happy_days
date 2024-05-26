@@ -9,11 +9,19 @@ import ctypes
 class Animation: 
 
     def __init__(self) -> None:
-        pass
+        self.bg_max_particles = 0
 
-    def enemy_death_effect(self):
+    def create_enemy_death_effect(self):
+        # expolosion with particles
+        ...
+    
+    def remove_enemy_death_effect(self):
         ...
     
     def background(self):
+        # lonely chaotic particles appear and disappear
         ...
 
+
+    def update_state(self, dt: float):
+        ...
