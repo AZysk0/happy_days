@@ -16,8 +16,26 @@ WINDOW_HEIGHT = 400
 ENEMY_ON_SPAWN_MIN_DIST = 1.5
 VIEWPORT = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
 
-# ===========
+# ===== import some C
+ctypes_fast_math_lib = ctypes.CDLL('lib/fast_math.dll')
+# Define the argument and return types of the C functions
+ctypes_fast_math_lib.map_opengl_to_screen_2d.argtypes = [
+    ctypes.c_float,  # x
+    ctypes.c_float,  # y
+    ctypes.c_short,  # w
+    ctypes.c_short,  # h
+    ctypes.POINTER(ctypes.c_float)  # result
+]
+ctypes_fast_math_lib.map_opengl_to_screen_2d.restype = None
 
+ctypes_fast_math_lib.map_screen_to_opengl.argtypes = [
+    ctypes.c_float,  # x
+    ctypes.c_float,  # y
+    ctypes.c_short,  # w
+    ctypes.c_short,  # h
+    ctypes.POINTER(ctypes.c_float)  # result
+]
+ctypes_fast_math_lib.map_screen_to_opengl.restype = None
 
 # ========== HELPER FUNCTIONS =======================
 def get_translation_matrix_2d(tx: float, ty: float) -> np.array:
@@ -93,6 +111,35 @@ def fast_dist(v1: np.array, v2: np.array):
     v = (v1 - v2).astype('float64')
     return np.sqrt(v[0] ** 2 + v[1] ** 2)
 
+
+def ctypes_map_opengl_to_screen_2d(gl_pos: np.array, viewport: np.array):
+    if len(gl_pos) != 2 or len(viewport) != 2:
+        raise ValueError(f"Wrong dimension of input vectors, pg_pos: {gl_pos.shape}, viewport: {viewport.shape}")
+     
+    result = np.zeros(2, dtype=np.float32)
+    
+    ctypes_fast_math_lib.map_opengl_to_screen_2d(
+        ctypes.c_float(gl_pos[0]), ctypes.c_float(gl_pos[1]),
+        ctypes.c_short(viewport[0]), ctypes.c_short(viewport[1]),
+        result.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    )
+    
+    return tuple(result.tolist())
+
+
+def ctypes_map_screen_to_opengl(pg_pos: np.array, viewport: np.array):
+    if len(pg_pos) != 2 or len(viewport) != 2:
+        raise ValueError(f"Wrong dimension of input vectors, pg_pos: {pg_pos.shape}, viewport: {viewport.shape}")
+     
+    result = np.zeros(2, dtype=np.float32)
+    
+    ctypes_fast_math_lib.map_screen_to_opengl(
+        ctypes.c_float(pg_pos[0]), ctypes.c_float(pg_pos[1]),
+        ctypes.c_short(viewport[0]), ctypes.c_short(viewport[1]),
+        result.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    )
+    
+    return tuple(result.tolist())
 
 # ====================================
 # TODO
@@ -354,7 +401,7 @@ class Scene():
 
                 self.player.is_knockbacked = True
                 self.player.knockback_time_left = 0.2
-                self.player.knockback_vector = -(enemy.gl_pos - self.player.current_position) / fast_dist(enemy.gl_pos, self.player.current_position)
+                self.player.knockback_vector = (self.player.current_position - enemy.gl_pos) / fast_dist(enemy.gl_pos, self.player.current_position)
 
         # bullets with enemies (for each bullet for each enemy)
         for i, bullet in enumerate(self.player.bullets_alive.copy()):
