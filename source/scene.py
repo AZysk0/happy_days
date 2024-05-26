@@ -37,6 +37,9 @@ ctypes_fast_math_lib.map_screen_to_opengl.argtypes = [
 ]
 ctypes_fast_math_lib.map_screen_to_opengl.restype = None
 
+ctypes_fast_math_lib.Q_rsqrt.argtypes = [ctypes.c_float]
+ctypes_fast_math_lib.Q_rsqrt.restype = ctypes.c_float
+
 # ========== HELPER FUNCTIONS =======================
 def get_translation_matrix_2d(tx: float, ty: float) -> np.array:
     '''
@@ -61,49 +64,49 @@ def get_rotation_matrix_2d(theta: float):
     ...
 
 
-@numba.jit(nogil=True)
-def map_opengl_to_pg_coordinates_2d(gl_pos: np.array, viewport) -> np.array:
-    '''
-    gl_pos: np.array - coordinates like it would be in opengl
-    viewport: np.array - screensize
-    (0, 0)
-    (800, 400)
-    (0, 0) -> (400, 200)
-    '''
-    if len(gl_pos) != 2 or len(viewport) != 2:
-        raise ValueError(f"Wrong dimension of input vectors, gl_pos: {gl_pos.shape}, viewport: {viewport.shape}")
+# @numba.jit(nogil=True)
+# def map_opengl_to_pg_coordinates_2d(gl_pos: np.array, viewport) -> np.array:
+#     '''
+#     gl_pos: np.array - coordinates like it would be in opengl
+#     viewport: np.array - screensize
+#     (0, 0)
+#     (800, 400)
+#     (0, 0) -> (400, 200)
+#     '''
+#     if len(gl_pos) != 2 or len(viewport) != 2:
+#         raise ValueError(f"Wrong dimension of input vectors, gl_pos: {gl_pos.shape}, viewport: {viewport.shape}")
     
-    # print(gl_pos.shape)
-    # cp_gl_pos = np.append(gl_pos.copy(), 1).reshape(-1, 1)
-    xpos, ypos = gl_pos
-    w, h = viewport
-    x_mapped = (xpos + 1) * 0.5 * w
-    y_mapped = (-ypos + 1) * 0.5 * h
+#     # print(gl_pos.shape)
+#     # cp_gl_pos = np.append(gl_pos.copy(), 1).reshape(-1, 1)
+#     xpos, ypos = gl_pos
+#     w, h = viewport
+#     x_mapped = (xpos + 1) * 0.5 * w
+#     y_mapped = (-ypos + 1) * 0.5 * h
 
-    # print(cp_gl_pos.shape)
-    # v => translate => scale
-    # new_x, new_y, _ = np.dot(get_scaling_matrix(0.5 * w, -0.5 * h, 0), np.dot(get_translation_matrix_2d(1, 1), cp_gl_pos))
+#     # print(cp_gl_pos.shape)
+#     # v => translate => scale
+#     # new_x, new_y, _ = np.dot(get_scaling_matrix(0.5 * w, -0.5 * h, 0), np.dot(get_translation_matrix_2d(1, 1), cp_gl_pos))
 
-    return np.array([x_mapped, y_mapped])
-    # return np.array([new_x[0], new_y[0]])
+#     return np.array([x_mapped, y_mapped])
+#     # return np.array([new_x[0], new_y[0]])
 
 
-@numba.jit(nogil=True)
-def map_pg_to_opengl_coordinates_2d(pg_pos, viewport):
-    # xpos, ypos = pg_pos
-    # cp_pg_pos = np.append(pg_pos.copy(), 1).reshape(-1, 1)
-    xpos, ypos = pg_pos
-    w, h = viewport
-    gl_xpos = -1 + xpos * (2 / w)
-    gl_ypos = -ypos * (2 / h) + 1
+# @numba.jit(nogil=True)
+# def map_pg_to_opengl_coordinates_2d(pg_pos, viewport):
+#     # xpos, ypos = pg_pos
+#     # cp_pg_pos = np.append(pg_pos.copy(), 1).reshape(-1, 1)
+#     xpos, ypos = pg_pos
+#     w, h = viewport
+#     gl_xpos = -1 + xpos * (2 / w)
+#     gl_ypos = -ypos * (2 / h) + 1
 
-    # print(cp_pg_pos.shape)
-    # v => scale => translate
-    # new_gl_xpos, new_gl_ypos, _ = \
-    #     np.dot(get_translation_matrix_2d(-1, 1), np.dot(get_scaling_matrix(2 / w, -2 / h, 0), cp_pg_pos))
-    # print(new_gl_xpos, new_gl_ypos)
-    return np.array([gl_xpos, gl_ypos])
-    # return np.array([new_gl_xpos[0], new_gl_ypos[0]])
+#     # print(cp_pg_pos.shape)
+#     # v => scale => translate
+#     # new_gl_xpos, new_gl_ypos, _ = \
+#     #     np.dot(get_translation_matrix_2d(-1, 1), np.dot(get_scaling_matrix(2 / w, -2 / h, 0), cp_pg_pos))
+#     # print(new_gl_xpos, new_gl_ypos)
+#     return np.array([gl_xpos, gl_ypos])
+#     # return np.array([new_gl_xpos[0], new_gl_ypos[0]])
 
 
 @numba.njit
@@ -112,7 +115,7 @@ def fast_dist(v1: np.array, v2: np.array):
     return np.sqrt(v[0] ** 2 + v[1] ** 2)
 
 
-def ctypes_map_opengl_to_screen_2d(gl_pos: np.array, viewport: np.array):
+def ctypes_map_opengl_to_screen(gl_pos: np.array, viewport: np.array):
     if len(gl_pos) != 2 or len(viewport) != 2:
         raise ValueError(f"Wrong dimension of input vectors, pg_pos: {gl_pos.shape}, viewport: {viewport.shape}")
      
@@ -141,6 +144,10 @@ def ctypes_map_screen_to_opengl(pg_pos: np.array, viewport: np.array):
     
     return tuple(result.tolist())
 
+
+def ctypes_fast_inverse_root(number: float):
+    return ctypes_fast_math_lib.Q_rsqrt(ctypes.c_float(number))#.value
+
 # ====================================
 # TODO
 class Wall: ...
@@ -165,13 +172,13 @@ class Enemy:
         return self.base_damage * self.damage_multiplier
 
     def update_velocity(self, player_gl_pos: np.array):
-        new_velocity_vector = player_gl_pos - self.gl_pos
-        norm = fast_dist(player_gl_pos, self.gl_pos)
-        self.current_velocity = new_velocity_vector.copy()  # is copy necessary?
-        if norm < EPSILON:
-            return
-        
-        self.current_velocity /= norm
+        new_velocity_vector = player_gl_pos - self.gl_pos + EPSILON
+        # norm = fast_dist(player_gl_pos, self.gl_pos)
+        self.current_velocity = new_velocity_vector.copy() * \
+            ctypes_fast_inverse_root(np.dot(new_velocity_vector, new_velocity_vector))
+        # if norm < EPSILON:
+        #     return
+        # self.current_velocity /= norm
     
     def update_position(self, dt):
         self.gl_pos += self.current_velocity * self.base_speed * dt
@@ -195,8 +202,10 @@ class Bullet:
         self.gl_pos += self.dir_vec * self.speed * dt
     
     def check_collision(self, enemy_obj) -> bool:
-        enemy_pg_pos = map_opengl_to_pg_coordinates_2d(enemy_obj.gl_pos.copy(), VIEWPORT)
-        bullet_pg_pos = map_opengl_to_pg_coordinates_2d(self.gl_pos.copy(), VIEWPORT)
+        # enemy_pg_pos = map_opengl_to_pg_coordinates_2d(enemy_obj.gl_pos.copy(), VIEWPORT)
+        # bullet_pg_pos = map_opengl_to_pg_coordinates_2d(self.gl_pos.copy(), VIEWPORT)
+        enemy_pg_pos = np.array(ctypes_map_opengl_to_screen(enemy_obj.gl_pos, VIEWPORT))
+        bullet_pg_pos = np.array(ctypes_map_opengl_to_screen(self.gl_pos, VIEWPORT))
         bullet_enemy_dist = fast_dist(bullet_pg_pos, enemy_pg_pos)
         # print(bullet_enemy_dist)
         # print(self.pg_radius, enemy_obj.radius)
@@ -206,10 +215,10 @@ class Bullet:
 class Player:
 
     def __init__(self) -> None:
-        self.current_position = np.array([0, 0]).astype("float64")
-        self.current_weapon_direction = np.array([1, 0]).astype("float64")
-        self.current_velocity = np.array([0, 0]).astype("float64")
-        self.current_dv = np.array([0, 0]).astype("float64")
+        self.current_position = np.array([0, 0]).astype("float32")
+        self.current_weapon_direction = np.array([1, 0]).astype("float32")
+        self.current_velocity = np.array([0, 0]).astype("float32")
+        self.current_dv = np.array([0, 0]).astype("float32")
 
         self.hitpoints = 100
         self.base_damage = 1
@@ -254,8 +263,8 @@ class Player:
         if self.is_invincible:
             return False
         
-        enemy_pg_pos = map_opengl_to_pg_coordinates_2d(enemy_obj.gl_pos.copy(), VIEWPORT)
-        player_pg_pos = map_opengl_to_pg_coordinates_2d(self.current_position.copy(), VIEWPORT)
+        enemy_pg_pos = np.array(ctypes_map_opengl_to_screen(enemy_obj.gl_pos, VIEWPORT))
+        player_pg_pos = np.array(ctypes_map_opengl_to_screen(self.current_position, VIEWPORT))
         return fast_dist(player_pg_pos, enemy_pg_pos) <= (self.base_radius + enemy_obj.radius)
 
     def get_current_damage(self):
@@ -273,9 +282,13 @@ class Player:
 
     def update_current_weapon_direction(self, m_xpos, m_ypos):
         viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
-        mpos_vector = map_pg_to_opengl_coordinates_2d(np.array([m_xpos, m_ypos]), viewport)
+        # mpos_vector = map_pg_to_opengl_coordinates_2d(np.array([m_xpos, m_ypos]), viewport)
+        mpos_vector = np.array(ctypes_map_screen_to_opengl(np.array([m_xpos, m_ypos]), viewport))
+
         new_direction = mpos_vector - self.current_position
-        self.current_weapon_direction = new_direction / linalg.norm(new_direction)
+        # self.current_weapon_direction = new_direction / linalg.norm(new_direction)
+        self.current_weapon_direction = new_direction * ctypes_fast_inverse_root(np.dot(new_direction, new_direction))
+
     
     def update_velocity_vector(self, keys_pressed):
         # ignore key presses when knockbacked
@@ -288,10 +301,12 @@ class Player:
         # print(current_move_vectors, keys_bitmask, keys_pressed)
         new_velocity_vector = sum(current_move_vectors)
         self.current_velocity = new_velocity_vector
-        if linalg.norm(new_velocity_vector) < EPSILON:
-            return
+        # if linalg.norm(new_velocity_vector) < EPSILON:
+        #     return
         
-        self.current_velocity = self.current_velocity / linalg.norm(self.current_velocity)
+        # self.current_velocity = self.current_velocity / linalg.norm(self.current_velocity)
+        self.current_velocity = self.current_velocity * \
+            ctypes_fast_inverse_root(np.dot(self.current_velocity, self.current_velocity))
 
     def update_bullets_state(self, dt):
         self.bullets_alive = list(filter(
@@ -367,7 +382,8 @@ class Scene():
         player_gl_pos = self.player.current_position
         enemy_gl_pos = (np.random.random(size=2) - 0.5) * 2 + EPSILON
         enemy_direction = enemy_gl_pos - player_gl_pos
-        enemy_direction /= linalg.norm(enemy_gl_pos)
+        # enemy_direction /= linalg.norm(enemy_gl_pos)
+        enemy_direction *= ctypes_fast_inverse_root(np.dot(enemy_direction, enemy_direction))
         enemy_new_gl_pos = player_gl_pos + ENEMY_ON_SPAWN_MIN_DIST * enemy_direction
         new_enemy = Enemy(enemy_new_gl_pos)
         self.enemies_alive.append(new_enemy)
@@ -401,7 +417,8 @@ class Scene():
 
                 self.player.is_knockbacked = True
                 self.player.knockback_time_left = 0.2
-                self.player.knockback_vector = (self.player.current_position - enemy.gl_pos) / fast_dist(enemy.gl_pos, self.player.current_position)
+                knockback_vec = self.player.current_position - enemy.gl_pos
+                self.player.knockback_vector = knockback_vec * ctypes_fast_inverse_root(np.dot(knockback_vec, knockback_vec))
 
         # bullets with enemies (for each bullet for each enemy)
         for i, bullet in enumerate(self.player.bullets_alive.copy()):

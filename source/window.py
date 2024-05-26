@@ -12,8 +12,8 @@ import random
 from button import Button
 from scene import ( 
     Scene, Bullet, Enemy, Camera, Player,
-    map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d,
-    ctypes_map_opengl_to_screen_2d, ctypes_map_screen_to_opengl
+    # map_opengl_to_pg_coordinates_2d, map_pg_to_opengl_coordinates_2d,
+    ctypes_map_opengl_to_screen, ctypes_map_screen_to_opengl
 )
 from hud import HeadupDisplay
 
@@ -40,7 +40,7 @@ def render_player(screen_ptr: pygame.Surface, player: Player) -> None:
     gl_pos = player.current_position.copy()
     viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
     # pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
-    pg_pos = ctypes_map_opengl_to_screen_2d(gl_pos, viewport)
+    pg_pos = ctypes_map_opengl_to_screen(gl_pos, viewport)
     pygame.draw.circle(screen_ptr, "white", pg_pos, player.base_radius)
 
 
@@ -48,7 +48,7 @@ def render_bullet(screen_ptr: pygame.Surface, bullet: Bullet) -> None:
     gl_pos = bullet.gl_pos.copy()
     viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
     # pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
-    pg_pos = ctypes_map_opengl_to_screen_2d(gl_pos, viewport)
+    pg_pos = ctypes_map_opengl_to_screen(gl_pos, viewport)
 
     pygame.draw.circle(screen_ptr, "white", pg_pos, bullet.pg_radius)
 
@@ -57,7 +57,7 @@ def render_enemy(screen_ptr: pygame.Surface, enemy: Enemy) -> None:
     gl_pos = enemy.gl_pos.copy()
     viewport = np.array([WINDOW_WIDTH, WINDOW_HEIGHT])
     # pg_pos = map_opengl_to_pg_coordinates_2d(gl_pos, viewport)
-    pg_pos = ctypes_map_opengl_to_screen_2d(gl_pos, viewport)
+    pg_pos = ctypes_map_opengl_to_screen(gl_pos, viewport)
 
     pygame.draw.circle(screen_ptr, "red", pg_pos, enemy.radius)
 
